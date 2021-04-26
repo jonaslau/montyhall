@@ -1,0 +1,104 @@
+---
+title: "R Notebook for Monty Hall simulations"
+author: "@jonaslau on Github"
+output: html_notebook
+---
+
+# Introduction
+This exercise creates a simulated answer to the [Monty Hall](https://en.wikipedia.org/wiki/Monty_Hall_problem). 
+
+## Import tidyverse package
+```{r, warning=FALSE}
+library(tidyverse)
+```
+
+## Create some global variables, set seed
+```{r}
+set.seed(8888)
+
+# number of simulated games
+n_games = 5000
+```
+
+## Monty Hall data frame
+```{r}
+monty_hall = tibble(
+  prize_room = sample(c("a","b","c"), size = n_games, replace = TRUE), # room with the prize, random sampled
+  first_guess = sample(c("a","b","c"), size = n_games, replace = TRUE), # first guess by player, random sampled
+  open = NA, # door opened by host after first guess
+  switch = sample(c(0,1), size=n_games, replace = TRUE), # whether the player switch door after a door opened, random sampled
+  final_choice = NA, # final response by the player
+  win_firstguess = NA, # winning for the first guess: placeholder
+  win_end = NA # winning at the end: placeholder
+)
+```
+
+## Determine which door the host can open
+```{r}
+# open door
+monty_hall = monty_hall %>%
+  mutate(open = case_when(
+    # the host's choices for opening a door
+    # e.g., if prize is behind door a, and the player chose door a
+    # the host can only open door b or door c
+    prize_room == "a" & first_guess == "a" ~ sample(c("b", "c"), size = 1),
+    prize_room == "a" & first_guess == "b" ~ "c",
+    prize_room == "a" & first_guess == "c" ~ "b",
+    # same logic with prize behind door b
+    prize_room == "b" & first_guess == "b" ~ sample(c("a", "c"), size = 1),
+    prize_room == "b" & first_guess == "a" ~ "c",
+    prize_room == "b" & first_guess == "c" ~ "a",
+    # same logic with prize behind door c
+    prize_room == "c" & first_guess == "c" ~ sample(c("a", "b"), size = 1),
+    prize_room == "c" & first_guess == "a" ~ "b",
+    prize_room == "c" & first_guess == "b" ~ "a",
+    TRUE ~ NA_character_)
+)
+```
+
+## Determine the final guess
+Two conditions: the player changes / does not change mind
+```{r}
+monty_hall = monty_hall %>%
+  mutate(final_choice = case_when( 
+    switch == 0 ~ first_guess, # if player does not change mind, final choice is the first guess
+    switch == 1 ~ case_when(
+      # if the player change mind, there is only one choice left
+      first_guess == "a" & open == "b" ~ "c",
+      first_guess == "a" & open == "c" ~ "b",
+      first_guess == "b" & open == "a" ~ "c",
+      first_guess == "b" & open == "c" ~ "a",
+      first_guess == "c" & open == "a" ~ "b",
+      first_guess == "c" & open == "b" ~ "a",
+    )
+  ))
+```
+
+## Calculate the overall accuracy if players switch/ not switch
+```{r}
+# calculate whether win or not
+monty_hall = monty_hall %>%
+  mutate(
+    win_firstguess = as.integer(prize_room == first_guess), # convert binary var to numbers
+    win_end = as.integer(prize_room == final_choice)
+  )
+```
+
+## Some winning statistics
+```{r}
+# statistics for first guess
+firstguess = monty_hall %>%
+  pull(win_firstguess) %>%
+  mean() * 100
+
+sprintf("A random guess would yield a %.1f%% accuracy", firstguess)
+
+# average for winning, grouped by the decision to switch
+winning = monty_hall %>%
+  group_by(switch) %>%
+  summarise(mean_accuracy = mean(win_end) * 100)
+
+sprintf("Without switching, chance of winning is %.1f%%; with switching, chance of winning becomes %.1f%%", 
+        winning %>% filter(switch == 0) %>% pull(mean_accuracy), 
+        winning %>% filter(switch == 1) %>% pull(mean_accuracy))
+```
